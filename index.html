@@ -1314,14 +1314,25 @@ function renderMTD() {
 
   // ----- Collection Target vs Achieved (61D+ from Collection Targets tab logic) -----
   const OVR_KEYS = ['bucket_61_90','bucket_91_120','bucket_121_150','bucket_151_180','bucket_181_210','bucket_211_240','bucket_240plus'];
-  let target = 0, mtdOver = 0, custWithTarget = 0, custCleared = 0;
+  const MTD_LOCK_PERIOD = '2026-04';
+  let mtdOver = 0, custWithTarget = 0, custCleared = 0;
   for (const p of pairs) {
     const aprOver = OVR_KEYS.reduce((s,k)=>s+p.buckets[k].apr, 0);
     const mtdOverP = OVR_KEYS.reduce((s,k)=>s+p.buckets[k].mtd, 0);
-    target += aprOver;
     mtdOver += mtdOverP;
     if (aprOver > 0.5) custWithTarget++;
     if (aprOver > 0.5 && mtdOverP < 0.5) custCleared++;
+  }
+  // Use the locked monthly target from PERIOD_START_TARGETS so MTD and Collection Target tabs always match
+  const lockEntry = PERIOD_START_TARGETS[MTD_LOCK_PERIOD];
+  let target = 0;
+  if (lockEntry) {
+    const divF = state.division;
+    if (divF === 'ALL') {
+      target = Object.values(lockEntry.divisions).reduce((s,v) => s + v, 0);
+    } else {
+      target = lockEntry.divisions[divF] || 0;
+    }
   }
   const achieved = target - mtdOver;
   const pctAch = target > 0 ? (achieved / target * 100) : 0;
