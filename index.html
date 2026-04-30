@@ -314,6 +314,7 @@
       <button class="tab" data-tab="movement">Aging Movement</button>
       <button class="tab" data-tab="customers">Customer Drill-Down</button>
       <button class="tab" data-tab="inout">Inflows vs Outflows</button>
+      <button class="tab" data-tab="offset">Offset</button>
     </div>
   </div>
 </div>
@@ -491,6 +492,21 @@
         </div>
       </div>
       <div id="mtd-customer-table"></div>
+    </div>
+  </div>
+
+  <!-- OFFSET TAB -->
+  <div id="tab-offset" style="display:none;">
+    <div class="card full-width" style="margin-bottom:24px;">
+      <div style="margin-bottom:20px;">
+        <div class="card-title" style="margin:0;">DEBTOR / PAYABLE OFFSET ANALYSIS</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px;">
+          Identifies companies that appear as both a debtor in the MTD receivables and a supplier in the payables outstanding.
+          Exact name matching is used. For each match, the aging bucket breakdown is shown for both sides so potential offsets can be assessed bucket by bucket.
+          Offset potential = the lesser of the debtor and payable balance in each bucket. Net position shows the residual after offsetting.
+        </div>
+      </div>
+      <div id="offset-content"></div>
     </div>
   </div>
 
@@ -1243,6 +1259,8 @@ function render() {
     renderMTD();
   } else if (state.tab === 'inout') {
     renderInOut();
+  } else if (state.tab === 'offset') {
+    renderOffset();
   }
 }
 
@@ -1797,13 +1815,174 @@ function renderMTD() {
   if (so) so.addEventListener('change', e => { mtdState.sort = e.target.value; if (state.tab==='mtd') renderMTD(); });
 })();
 
+// =========== OFFSET ===========
+function renderOffset() {
+  const el = document.getElementById('offset-content');
+  if (!el) return;
+
+  const BK_KEYS = ['bucket_0_30','bucket_31_60','bucket_61_90','bucket_91_120',
+                   'bucket_121_150','bucket_151_180','bucket_181_210','bucket_211_240','bucket_240plus'];
+  const BK_LABELS = ['0–30D','31–60D','61–90D','91–120D','121–150D','151–180D','181–210D','211–240D','240+D'];
+
+  // Aggregate MTD_RAW by normalised customer name
+  const debtorMap = {};
+  MTD_RAW.forEach(r => {
+    const key = r.customer.trim().toUpperCase().replace(/\s+/g,' ');
+    if (!debtorMap[key]) {
+      debtorMap[key] = { name: r.customer, cust_code: r.cust_code, divisions: [], net_outstanding: 0 };
+      BK_KEYS.forEach(b => { debtorMap[key][b] = 0; });
+    }
+    debtorMap[key].net_outstanding += r.net_outstanding;
+    if (!debtorMap[key].divisions.includes(r.division)) debtorMap[key].divisions.push(r.division);
+    BK_KEYS.forEach(b => { debtorMap[key][b] += (r[b] || 0); });
+  });
+
+  // Build supplier lookup by normalised name
+  const supplierMap = {};
+  PAYABLES_SUPPLIERS.forEach(s => {
+    const key = s.name.trim().toUpperCase().replace(/\s+/g,' ');
+    supplierMap[key] = s;
+  });
+
+  // Find exact matches
+  const matches = [];
+  Object.keys(debtorMap).forEach(key => {
+    if (supplierMap[key]) {
+      matches.push({ debtor: debtorMap[key], supplier: supplierMap[key] });
+    }
+  });
+
+  // Sort by total offset potential descending
+  matches.sort((a, b) => {
+    const offA = Math.min(a.debtor.net_outstanding, a.supplier.total);
+    const offB = Math.min(b.debtor.net_outstanding, b.supplier.total);
+    return offB - offA;
+  });
+
+  if (matches.length === 0) {
+    el.innerHTML = '<div style="padding:32px;text-align:center;color:var(--muted);font-size:14px;">No exact name matches found between MTD debtors and payables suppliers.</div>';
+    return;
+  }
+
+  const fmt = n => n === 0 ? '—' : (n < 0 ? '-' : '') + 'AED ' + Math.abs(Math.round(n)).toLocaleString();
+  const fmtN = n => Math.round(n).toLocaleString();
+
+  // Summary KPIs
+  const totalDebtor   = matches.reduce((s, m) => s + m.debtor.net_outstanding, 0);
+  const totalPayable  = matches.reduce((s, m) => s + m.supplier.total, 0);
+  const totalOffset   = matches.reduce((s, m) => s + BK_KEYS.reduce((acc, b) => acc + Math.min(Math.max(m.debtor[b],0), Math.max(m.supplier[b],0)), 0), 0);
+  const netReceivable = matches.reduce((s, m) => s + BK_KEYS.reduce((acc, b) => {
+    const d = m.debtor[b] || 0, p = m.supplier[b] || 0;
+    return acc + Math.max(d - p, 0);
+  }, 0), 0);
+  const netPayable    = matches.reduce((s, m) => s + BK_KEYS.reduce((acc, b) => {
+    const d = m.debtor[b] || 0, p = m.supplier[b] || 0;
+    return acc + Math.max(p - d, 0);
+  }, 0), 0);
+
+  let html = `
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px;">
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;border-top:3px solid var(--brand-blue);">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Matched Companies</div>
+      <div style="font-size:26px;font-weight:800;color:var(--brand-navy);">${matches.length}</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;border-top:3px solid var(--brand-sky);">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Receivable</div>
+      <div style="font-size:18px;font-weight:800;color:var(--brand-navy);">AED ${fmtN(totalDebtor)}</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;border-top:3px solid var(--warn);">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Payable</div>
+      <div style="font-size:18px;font-weight:800;color:var(--brand-navy);">AED ${fmtN(totalPayable)}</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;border-top:3px solid var(--success);">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Offset Potential</div>
+      <div style="font-size:18px;font-weight:800;color:var(--success);">AED ${fmtN(totalOffset)}</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:8px;padding:16px;border-top:3px solid ${netReceivable >= netPayable ? 'var(--success)' : 'var(--danger)'};">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Net After Offset</div>
+      <div style="font-size:14px;font-weight:700;color:var(--success);">Collect AED ${fmtN(netReceivable)}</div>
+      <div style="font-size:14px;font-weight:700;color:var(--danger);">Pay AED ${fmtN(netPayable)}</div>
+    </div>
+  </div>`;
+
+  // Per-company cards
+  matches.forEach(m => {
+    const { debtor, supplier } = m;
+    const totalOff = BK_KEYS.reduce((acc, b) => acc + Math.min(Math.max(debtor[b]||0,0), Math.max(supplier[b]||0,0)), 0);
+    const netRec   = BK_KEYS.reduce((acc, b) => acc + Math.max((debtor[b]||0)-(supplier[b]||0), 0), 0);
+    const netPay   = BK_KEYS.reduce((acc, b) => acc + Math.max((supplier[b]||0)-(debtor[b]||0), 0), 0);
+
+    // Only render bucket rows with any non-zero value on either side
+    const bucketRows = BK_KEYS.map((b, i) => {
+      const d = debtor[b] || 0, p = supplier[b] || 0;
+      if (Math.abs(d) < 0.5 && Math.abs(p) < 0.5) return '';
+      const off  = Math.min(Math.max(d,0), Math.max(p,0));
+      const nRec = Math.max(d - p, 0);
+      const nPay = Math.max(p - d, 0);
+      const rowBg = off > 0 ? 'background:#eafaf1;' : '';
+      return `<tr style="${rowBg}">
+        <td style="padding:7px 10px;font-size:12px;font-weight:600;color:var(--brand-navy);white-space:nowrap;">${BK_LABELS[i]}</td>
+        <td style="padding:7px 10px;font-size:12px;text-align:right;color:${d>0?'var(--brand-blue)':'var(--muted)'};">${d!==0?'AED '+fmtN(d):'—'}</td>
+        <td style="padding:7px 10px;font-size:12px;text-align:right;color:${p>0?'var(--warn)':'var(--muted)'};">${p!==0?'AED '+fmtN(p):'—'}</td>
+        <td style="padding:7px 10px;font-size:12px;text-align:right;font-weight:700;color:${off>0?'var(--success)':'var(--muted)'};">${off>0?'AED '+fmtN(off):'—'}</td>
+        <td style="padding:7px 10px;font-size:12px;text-align:right;color:${nRec>0?'var(--brand-blue)':'var(--muted)'};">${nRec>0?'AED '+fmtN(nRec):'—'}</td>
+        <td style="padding:7px 10px;font-size:12px;text-align:right;color:${nPay>0?'var(--danger)':'var(--muted)'};">${nPay>0?'AED '+fmtN(nPay):'—'}</td>
+      </tr>`;
+    }).join('');
+
+    html += `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:18px;overflow:hidden;">
+      <div style="background:var(--brand-navy);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#fff;">${debtor.name}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:2px;">
+            Debtor: ${debtor.cust_code} &nbsp;|&nbsp; Supplier: ${supplier.code} &nbsp;|&nbsp; Region: ${supplier.region} &nbsp;|&nbsp; Division: ${debtor.divisions.join(', ')}
+          </div>
+        </div>
+        <div style="display:flex;gap:20px;text-align:right;">
+          <div><div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;">Receivable</div><div style="font-size:14px;font-weight:700;color:var(--brand-light);">AED ${fmtN(debtor.net_outstanding)}</div></div>
+          <div><div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;">Payable</div><div style="font-size:14px;font-weight:700;color:#f5a623;">AED ${fmtN(supplier.total)}</div></div>
+          <div><div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;">Offset</div><div style="font-size:14px;font-weight:700;color:#2ecc71;">AED ${fmtN(totalOff)}</div></div>
+          <div><div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;">Net Collect</div><div style="font-size:14px;font-weight:700;color:${netRec>0?'#2ecc71':'rgba(255,255,255,0.4)'};">${netRec>0?'AED '+fmtN(netRec):'—'}</div></div>
+          <div><div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;">Net Pay</div><div style="font-size:14px;font-weight:700;color:${netPay>0?'#e74c3c':'rgba(255,255,255,0.4)'};">${netPay>0?'AED '+fmtN(netPay):'—'}</div></div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:var(--surface2);">
+            <th style="padding:8px 10px;font-size:11px;text-align:left;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Bucket</th>
+            <th style="padding:8px 10px;font-size:11px;text-align:right;color:var(--brand-blue);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Receivable</th>
+            <th style="padding:8px 10px;font-size:11px;text-align:right;color:var(--warn);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Payable</th>
+            <th style="padding:8px 10px;font-size:11px;text-align:right;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Offset Potential</th>
+            <th style="padding:8px 10px;font-size:11px;text-align:right;color:var(--brand-blue);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Net Receivable</th>
+            <th style="padding:8px 10px;font-size:11px;text-align:right;color:var(--danger);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Net Payable</th>
+          </tr>
+        </thead>
+        <tbody>${bucketRows}</tbody>
+        <tfoot>
+          <tr style="background:var(--surface2);border-top:2px solid var(--border);">
+            <td style="padding:9px 10px;font-size:12px;font-weight:700;color:var(--brand-navy);">TOTAL</td>
+            <td style="padding:9px 10px;font-size:12px;font-weight:700;text-align:right;color:var(--brand-blue);">AED ${fmtN(debtor.net_outstanding)}</td>
+            <td style="padding:9px 10px;font-size:12px;font-weight:700;text-align:right;color:var(--warn);">AED ${fmtN(supplier.total)}</td>
+            <td style="padding:9px 10px;font-size:12px;font-weight:700;text-align:right;color:var(--success);">AED ${fmtN(totalOff)}</td>
+            <td style="padding:9px 10px;font-size:12px;font-weight:700;text-align:right;color:var(--brand-blue);">${netRec>0?'AED '+fmtN(netRec):'—'}</td>
+            <td style="padding:9px 10px;font-size:12px;font-weight:700;text-align:right;color:var(--danger);">${netPay>0?'AED '+fmtN(netPay):'—'}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
 // =========== TABS ===========
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     state.tab = tab.dataset.tab;
-    ['overview','movement','customers','targets','mtd','inout'].forEach(t => {
+    ['overview','movement','customers','targets','mtd','inout','offset'].forEach(t => {
       document.getElementById(`tab-${t}`).style.display = t === state.tab ? 'block' : 'none';
     });
     render();
