@@ -467,12 +467,7 @@
       <div id="mtd-kpi-strip" class="kpi-grid" style="margin-bottom:8px;"></div>
     </div>
 
-    <div class="card full-width" style="margin-bottom:20px;">
-      <div class="card-title">COLLECTION TARGET vs ACHIEVED — 61D+ DEBT</div>
-      <div id="mtd-collection-target"></div>
-    </div>
-
-    <div class="card full-width" style="margin-bottom:20px;">
+        <div class="card full-width" style="margin-bottom:20px;">
       <div class="card-title">BUCKET MOVEMENT — ALL DIVISIONS</div>
       <div id="mtd-bucket-strip"></div>
     </div>
@@ -1680,7 +1675,7 @@ function renderMTD() {
   const aprTotal = pairs.reduce((s,p)=>s+p.apr_total,0);
   const mtdTotal = pairs.reduce((s,p)=>s+p.mtd_total,0);
   const netDelta = mtdTotal - aprTotal;
-  const collected = pairs.filter(p=>p.delta<0).reduce((s,p)=>s+p.delta,0);
+
   const added = pairs.filter(p=>p.delta>0).reduce((s,p)=>s+p.delta,0);
   const movers = pairs.filter(p=>Math.abs(p.delta)>0.5).length;
 
@@ -1688,7 +1683,7 @@ function renderMTD() {
     { label: 'May Opening', val: fmt(aprTotal), sub: pairs.filter(p=>p.apr_total>0).length + ' customers', cls: '' },
     { label: 'MTD Today', val: fmt(mtdTotal), sub: pairs.filter(p=>p.mtd_total>0).length + ' customers', cls: '' },
     { label: 'Net Movement', val: (netDelta>=0?'+':'') + fmt(netDelta), sub: netDelta>=0?'Increase':'Decrease', cls: netDelta<=0?'green':'red' },
-    { label: 'Collections', val: fmt(Math.abs(collected)), sub: 'Reductions across customers', cls: 'green' },
+
     { label: 'New Debt', val: fmt(added), sub: 'Increases across customers', cls: 'red' },
     { label: 'Customers Moved', val: movers, sub: 'With balance changes', cls: '' },
   ].map(k => `
@@ -1700,64 +1695,7 @@ function renderMTD() {
   `).join('');
   document.getElementById('mtd-kpi-strip').innerHTML = kpiHtml;
 
-  // ----- Collection Target vs Achieved (61D+ from Collection Targets tab logic) -----
-  const OVR_KEYS = ['bucket_61_90','bucket_91_120','bucket_121_150','bucket_151_180','bucket_181_210','bucket_211_240','bucket_240plus'];
-  const MTD_LOCK_PERIOD = '2026-05';
-  let mtdOver = 0, custWithTarget = 0, custCleared = 0;
-  for (const p of pairs) {
-    const aprOver = OVR_KEYS.reduce((s,k)=>s+p.buckets[k].apr, 0);
-    const mtdOverP = OVR_KEYS.reduce((s,k)=>s+p.buckets[k].mtd, 0);
-    mtdOver += mtdOverP;
-    if (aprOver > 0.5) custWithTarget++;
-    if (aprOver > 0.5 && mtdOverP < 0.5) custCleared++;
-  }
-  // Use the locked monthly target from PERIOD_START_TARGETS so MTD and Collection Target tabs always match
-  const lockEntry = PERIOD_START_TARGETS[MTD_LOCK_PERIOD];
-  let target = 0;
-  if (lockEntry) {
-    const divF = state.division;
-    if (divF === 'ALL') {
-      target = Object.values(lockEntry.divisions).reduce((s,v) => s + v, 0);
-    } else {
-      target = lockEntry.divisions[divF] || 0;
-    }
-  }
-  const achieved = target - mtdOver;
-  const pctAch = target > 0 ? (achieved / target * 100) : 0;
-  const barPct = Math.max(0, Math.min(100, pctAch));
-  const barColor = achieved < 0 ? '#d63b3b' : (pctAch >= 50 ? '#1f9e5f' : (pctAch >= 20 ? '#f0a500' : '#329FCD'));
-  const achColor = achieved < 0 ? '#d63b3b' : '#1f9e5f';
-  const remaining = mtdOver;
-  document.getElementById('mtd-collection-target').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px;">
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:#fff;">
-        <div style="font-size:11px;color:var(--muted);font-weight:bold;letter-spacing:0.5px;">MONTHLY TARGET</div>
-        <div style="font-size:22px;font-weight:bold;color:var(--navy);margin-top:4px;font-family:var(--font-mono);">${fmt(target)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px;">61D+ debt at May opening · ${custWithTarget} customers</div>
-      </div>
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:#fff;">
-        <div style="font-size:11px;color:var(--muted);font-weight:bold;letter-spacing:0.5px;">COLLECTED MTD</div>
-        <div style="font-size:22px;font-weight:bold;color:${achColor};margin-top:4px;font-family:var(--font-mono);">${achieved>=0?'':'-'}${fmt(Math.abs(achieved))}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${custCleared} customer${custCleared===1?'':'s'} fully cleared</div>
-      </div>
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:#fff;">
-        <div style="font-size:11px;color:var(--muted);font-weight:bold;letter-spacing:0.5px;">REMAINING</div>
-        <div style="font-size:22px;font-weight:bold;color:var(--navy);margin-top:4px;font-family:var(--font-mono);">${fmt(remaining)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px;">61D+ debt still outstanding</div>
-      </div>
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:#fff;">
-        <div style="font-size:11px;color:var(--muted);font-weight:bold;letter-spacing:0.5px;">% ACHIEVED</div>
-        <div style="font-size:22px;font-weight:bold;color:${achColor};margin-top:4px;font-family:var(--font-mono);">${pctAch.toFixed(1)}%</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${achieved < 0 ? 'Old debt grew' : 'of target hit'}</div>
-      </div>
-    </div>
-    <div style="background:#eef1f5;border-radius:6px;height:14px;overflow:hidden;border:1px solid var(--border);">
-      <div style="width:${barPct}%;height:100%;background:${barColor};transition:width 0.3s;"></div>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">Net basis: includes any 31–60D balances that rolled into 61D+ during the month</div>
-  `;
-
-  // ----- Bucket strip -----
+    // ----- Bucket strip -----
   const bucketTotals = BUCKETS.map(b => {
     let apr=0, mtd=0;
     for (const p of pairs) { apr += p.buckets[b.key].apr; mtd += p.buckets[b.key].mtd; }
