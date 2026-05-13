@@ -206,6 +206,7 @@
   td.right { text-align: right; }
   td.center { text-align: center; }
   th.right { text-align: right; }
+  th.center { text-align: center; }
   .badge {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: var(--font-mono); font-weight: 700;
@@ -314,7 +315,6 @@
       <button class="tab" data-tab="targets">Collection Target</button>
       <button class="tab" data-tab="mtd">MTD Movement</button>
       <button class="tab" data-tab="movement">Aging Movement</button>
-      <button class="tab" data-tab="customers">Customer Drill-Down</button>
       <button class="tab" data-tab="inout">Inflows vs Outflows</button>
       <button class="tab" data-tab="offset">Debtor/ Supplier Offset</button>
     </div>
@@ -356,6 +356,11 @@
         <div class="card-title" style="margin:0;" id="movement-title">DEBT AGING MOVEMENT — JAN → FEB</div>
         <div style="display:flex; gap:12px; align-items:center;">
           <input type="text" id="search-movement" placeholder="Search customer…">
+          <select id="sel-sort">
+            <option value="worst">Worst first (most aged)</option>
+            <option value="best">Best first (improving)</option>
+            <option value="largest">Largest balance</option>
+          </select>
           <select id="sel-bucket-filter">
             <option value="ALL">All Buckets</option>
             <option value="0">0–30 days</option>
@@ -376,16 +381,18 @@
             <tr>
               <th>Customer</th>
               <th>Division</th>
-              <th class="right">0-30D</th>
-              <th class="right">31-60D</th>
-              <th class="right">61-90D</th>
-              <th class="right">91-120D</th>
-              <th class="right">121-150D</th>
-              <th class="right">151-180D</th>
-              <th class="right">181-210D</th>
-              <th class="right">211-360D</th>
-              <th class="right">&gt;360D</th>
-              <th class="right">Net Δ</th>
+              <th class="center" style="background:rgba(192,57,43,0.08);color:#c0392b;">PDC</th>
+              <th class="center">0-30D</th>
+              <th class="center">31-60D</th>
+              <th class="center">61-90D</th>
+              <th class="center">91-120D</th>
+              <th class="center">121-150D</th>
+              <th class="center">151-180D</th>
+              <th class="center">181-210D</th>
+              <th class="center">211-360D</th>
+              <th class="center">&gt;360D</th>
+              <th class="center">Total</th>
+              <th class="center">Net Δ</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -395,23 +402,6 @@
     </div>
   </div>
 
-  <!-- CUSTOMERS TAB -->
-  <div id="tab-customers" style="display:none;">
-    <div class="card full-width">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
-        <div class="card-title" style="margin:0;">CUSTOMER DEBT RACE — WHO'S WINNING?</div>
-        <div style="display:flex; gap:12px; align-items:center;">
-          <input type="text" id="search-cust" placeholder="Search customer…">
-          <select id="sel-sort">
-            <option value="worst">Worst first (most aged)</option>
-            <option value="best">Best first (improving)</option>
-            <option value="largest">Largest balance</option>
-          </select>
-        </div>
-      </div>
-      <div id="customer-race"></div>
-    </div>
-  </div>
 
   <!-- COLLECTION TARGETS TAB -->
   <div id="tab-targets" style="display:none;">
@@ -541,6 +531,25 @@ const BUCKETS = [
   { key: 'bucket_240plus',label: '> 360 D',       color: '#3b0764' },
 ];
 
+// PDC values from Apr 2026 source files (column T). Key = cust_code|division.
+const PDC_2026_04 = {
+  "CUST0368|MCWP": 72450,
+  "CUST1534|MCWP": 60436.2,
+  "CUST1195|PA UAE": 9030,
+  "CUST1748|PA UAE": 19425,
+  "CUST1503|PA UAE": 7560,
+  "CUST0792|PA UAE": 7350,
+  "CUST1781|PA UAE": 1260,
+  "CUST1067|PA UAE": 4935,
+  "CUST1157|PA UAE": 6832,
+  "CUST1065|PA UAE": 62184.5,
+  "CUST0556|PA UAE": 30660.01,
+  "CUST0430|PA UAE": 15785,
+  "CUST1469|PA UAE": 109200,
+  "CUST1269|PA UAE": 4410,
+  "CUST0471|PA UAE": 2520,
+};
+
 const PERIODS = ['2026-01','2026-02','2026-03','2026-04','2026-05'];
 const PERIOD_LABELS = { '2026-01':'Jan 2026','2026-02':'Feb 2026','2026-03':'Mar 2026','2026-04':'Apr 2026','2026-05':'May 2026' };
 
@@ -602,7 +611,6 @@ let state = {
   periodTo: '2026-05',
   tab: 'overview',
   searchMovement: '',
-  searchCust: '',
   bucketFilter: 'ALL',
   sortCust: 'worst',
 };
@@ -813,54 +821,65 @@ function renderTrend() {
 }
 
 function renderMovement(from, to) {
-  document.getElementById('movement-title').textContent = 
+  document.getElementById('movement-title').textContent =
     `DEBT AGING MOVEMENT — ${PERIOD_LABELS[state.periodFrom]} → ${PERIOD_LABELS[state.periodTo]}`;
-  
+
   const fromMap = {};
   for (const r of from) fromMap[r.cust_code + '|' + r.division] = r;
   const toMap = {};
   for (const r of to) toMap[r.cust_code + '|' + r.division] = r;
-  
+
   const allKeys = new Set([...Object.keys(fromMap), ...Object.keys(toMap)]);
-  
+
+  const ageScore = (rec) => rec ? (
+    rec.bucket_91_120 * 4 + rec.bucket_121_150 * 5 + rec.bucket_151_180 * 6 +
+    rec.bucket_181_210 * 7 + rec.bucket_211_240 * 8 + rec.bucket_240plus * 9
+  ) : 0;
+
   const rows = [];
   for (const key of allKeys) {
     const f = fromMap[key];
     const t = toMap[key];
     const cust = (t || f).customer;
     const div = (t || f).division;
-    
+
     if (state.division !== 'ALL' && div !== state.division) continue;
-    
+
     const search = state.searchMovement.toLowerCase();
     if (search && !cust.toLowerCase().includes(search)) continue;
-    
-    const netDelta = (t ? t.net_outstanding : 0) - (f ? f.net_outstanding : 0);
-    
-    // Determine bucket-level movements
+
+    const totalTo = t ? t.net_outstanding : 0;
+    const netDelta = totalTo - (f ? f.net_outstanding : 0);
+
     const bucketDeltas = BUCKETS.map(b => {
       const fv = f ? f[b.key] : 0;
       const tv = t ? t[b.key] : 0;
       return tv - fv;
     });
-    
-    // Filter by bucket
+
     if (state.bucketFilter !== 'ALL') {
       const bi = parseInt(state.bucketFilter);
       if (Math.abs(bucketDeltas[bi]) < 1) continue;
     }
-    
-    rows.push({ cust, div, bucketDeltas, netDelta, isNew: !f, isGone: !t });
+
+    rows.push({ cust, div, bucketDeltas, netDelta, totalTo,
+      pdc: PDC_2026_04[(t||f).cust_code + '|' + div] || 0,
+      ageScoreTo: ageScore(t), ageScoreFrom: ageScore(f), isNew: !f, isGone: !t });
   }
-  
-  // Sort by abs net delta
-  rows.sort((a,b) => Math.abs(b.netDelta) - Math.abs(a.netDelta));
-  
+
+  if (state.sortCust === 'worst') {
+    rows.sort((a,b) => b.ageScoreTo - a.ageScoreTo);
+  } else if (state.sortCust === 'best') {
+    rows.sort((a,b) => (a.ageScoreTo - a.ageScoreFrom) - (b.ageScoreTo - b.ageScoreFrom));
+  } else {
+    rows.sort((a,b) => b.totalTo - a.totalTo);
+  }
+
   function status(row) {
-    if (row.isNew) return `<span class="badge new">New</span>`;
+    if (row.isNew)  return `<span class="badge new">New</span>`;
     if (row.isGone) return `<span class="badge neutral">Cleared</span>`;
     if (row.netDelta < -1000) return `<span class="badge win">▼ Reducing</span>`;
-    if (row.netDelta > 1000) return `<span class="badge lose">▲ Growing</span>`;
+    if (row.netDelta > 1000)  return `<span class="badge lose">▲ Growing</span>`;
     return `<span class="badge neutral">Stable</span>`;
   }
 
@@ -872,15 +891,19 @@ function renderMovement(from, to) {
 
   const tbody = document.getElementById('movement-tbody');
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="13" class="empty"><div class="empty-icon">🔍</div>No matching records</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" class="empty"><div class="empty-icon">🔍</div>No matching records</td></tr>`;
     return;
   }
-  
+
   tbody.innerHTML = rows.slice(0,100).map(row => `
     <tr>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.cust}">${row.cust}</td>
       <td style="color:var(--muted);font-size:11px;">${row.div}</td>
+      ${row.pdc > 0
+        ? `<td class="mono right" style="background:rgba(192,57,43,0.08);color:#c0392b;">${fmt(row.pdc)}</td>`
+        : `<td class="mono right" style="background:rgba(192,57,43,0.04);color:var(--dim);">—</td>`}
       ${row.bucketDeltas.map(d => bucketCell(d)).join('')}
+      <td class="mono right" style="font-weight:600;">${fmt(row.totalTo)}</td>
       <td class="mono right" style="color:${row.netDelta < 0 ? 'var(--success)' : (row.netDelta > 0 ? 'var(--danger)' : 'var(--muted)')}">
         ${row.netDelta > 0 ? '+' : ''}${fmt(row.netDelta)}
       </td>
@@ -888,103 +911,6 @@ function renderMovement(from, to) {
     </tr>`).join('');
 }
 
-function renderCustomerRace(from, to) {
-  const fromMap = {};
-  for (const r of from) fromMap[r.cust_code + '|' + r.division] = r;
-  const toMap = {};
-  for (const r of to) toMap[r.cust_code + '|' + r.division] = r;
-  
-  const allKeys = new Set([...Object.keys(fromMap), ...Object.keys(toMap)]);
-  
-  let items = [];
-  for (const key of allKeys) {
-    const f = fromMap[key];
-    const t = toMap[key];
-    const rec = t || f;
-    if (state.division !== 'ALL' && rec.division !== state.division) continue;
-    const search = state.searchCust.toLowerCase();
-    if (search && !rec.customer.toLowerCase().includes(search)) continue;
-    
-    const totalFrom = f ? f.net_outstanding : 0;
-    const totalTo = t ? t.net_outstanding : 0;
-    // Aging score: weighted sum (older = higher score)
-    const ageScore = (rec) => rec ? (
-      rec.bucket_91_120 * 4 + rec.bucket_121_150 * 5 + rec.bucket_151_180 * 6 +
-      rec.bucket_181_210 * 7 + rec.bucket_211_240 * 8 + rec.bucket_240plus * 9
-    ) : 0;
-    
-    items.push({
-      customer: rec.customer,
-      division: rec.division,
-      totalFrom, totalTo,
-      netDelta: totalTo - totalFrom,
-      ageScoreFrom: ageScore(f),
-      ageScoreTo: ageScore(t),
-      fromBuckets: f ? BUCKETS.map(b => f[b.key]) : BUCKETS.map(()=>0),
-      toBuckets: t ? BUCKETS.map(b => t[b.key]) : BUCKETS.map(()=>0),
-    });
-  }
-  
-  if (state.sortCust === 'worst') {
-    items.sort((a,b) => b.ageScoreTo - a.ageScoreTo);
-  } else if (state.sortCust === 'best') {
-    items.sort((a,b) => (a.ageScoreTo - a.ageScoreFrom) - (b.ageScoreTo - b.ageScoreFrom));
-  } else {
-    items.sort((a,b) => b.totalTo - a.totalTo);
-  }
-  
-  const maxTotal = Math.max(...items.map(i => Math.max(i.totalFrom, i.totalTo)));
-  
-  const container = document.getElementById('customer-race');
-  if (items.length === 0) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div>No matching customers</div>`;
-    return;
-  }
-  
-  container.innerHTML = items.slice(0,60).map(item => {
-    const isImproving = item.netDelta < 0;
-    const isWorsening = item.netDelta > 1000;
-    const statusColor = isImproving ? 'var(--success)' : isWorsening ? 'var(--danger)' : 'var(--muted)';
-    const statusIcon = isImproving ? '▼' : isWorsening ? '▲' : '—';
-    
-    const fromBar = maxTotal > 0 ? (item.totalFrom / maxTotal * 100) : 0;
-    const toBar = maxTotal > 0 ? (item.totalTo / maxTotal * 100) : 0;
-    
-    // Build bucket mini bars for current period
-    const maxBucket = Math.max(...item.toBuckets);
-    const miniBar = maxBucket > 0 ? BUCKETS.map((b,i) => {
-      const w = (item.toBuckets[i] / maxBucket * 100);
-      return `<div style="flex:1;height:4px;background:${item.toBuckets[i]>0?b.color:'var(--surface2)'};border-radius:1px;" title="${b.label}: ${fmt(item.toBuckets[i])}"></div>`;
-    }).join('') : '';
-    
-    return `
-      <div class="race-item" style="border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:14px;">
-        <div class="race-header">
-          <div>
-            <div class="race-customer" title="${item.customer}">${item.customer}</div>
-            <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);">${item.division}</div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-family:var(--font-mono);font-size:13px;">${fmt(item.totalTo)}</div>
-            <div style="color:${statusColor};font-size:11px;font-family:var(--font-mono);">${statusIcon} ${fmt(Math.abs(item.netDelta))}</div>
-          </div>
-        </div>
-        <div class="race-bars" style="margin-top:8px;">
-          <div class="race-bar-row">
-            <div class="race-period-label">${PERIOD_LABELS[state.periodFrom].split(' ')[0]}</div>
-            <div class="race-track"><div class="race-fill" style="width:${fromBar}%;background:var(--dim);"></div></div>
-            <div class="race-val">${fmt(item.totalFrom)}</div>
-          </div>
-          <div class="race-bar-row">
-            <div class="race-period-label">${PERIOD_LABELS[state.periodTo].split(' ')[0]}</div>
-            <div class="race-track"><div class="race-fill" style="width:${toBar}%;background:${statusColor};"></div></div>
-            <div class="race-val">${fmt(item.totalTo)}</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:2px;margin-top:6px;">${miniBar}</div>
-      </div>`;
-  }).join('');
-}
 
 // =========== DIVISION SCOREBOARD ===========
 function renderDivisionScoreboard() {
@@ -1261,8 +1187,6 @@ function render() {
     renderTrend();
   } else if (state.tab === 'movement') {
     renderMovement(from, to);
-  } else if (state.tab === 'customers') {
-    renderCustomerRace(from, to);
   } else if (state.tab === 'targets') {
     renderCollectionTargets();
   } else if (state.tab === 'mtd') {
@@ -1822,40 +1746,40 @@ function renderMTD() {
   else rows.sort((a,b)=>a.customer.localeCompare(b.customer));
 
   const tableHtml = `
-    <div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <div class="movement-table-wrap">
+    <table>
       <thead>
-        <tr style="background:var(--navy);color:#fff;">
-          <th style="padding:10px 8px;text-align:left;">Customer</th>
-          <th style="padding:10px 8px;text-align:left;">Division</th>
-          <th style="padding:10px 8px;text-align:right;">May Opening</th>
-          <th style="padding:10px 8px;text-align:right;">MTD Today</th>
-          <th style="padding:10px 8px;text-align:right;">Net Δ</th>
-          ${BUCKETS.map(b=>`<th style="padding:10px 6px;text-align:right;font-size:10px;">${b.label} Δ</th>`).join('')}
+        <tr>
+          <th>Customer</th>
+          <th>Division</th>
+          <th class="right">May Opening</th>
+          <th class="right">MTD Today</th>
+          <th class="right">Net Δ</th>
+          ${BUCKETS.map(b=>`<th class="right">${b.label} Δ</th>`).join('')}
         </tr>
       </thead>
       <tbody>
-        ${rows.map((p,i)=>{
-          const dColor = p.delta < 0 ? '#1f9e5f' : (p.delta > 0 ? '#d63b3b' : 'var(--muted)');
+        ${rows.map(p=>{
+          const dColor = p.delta < 0 ? 'var(--success)' : (p.delta > 0 ? 'var(--danger)' : 'var(--muted)');
           return `
-            <tr style="border-bottom:1px solid var(--border);${i%2===0?'background:#f9fafc;':''}">
-              <td style="padding:8px;font-weight:bold;">${p.customer}</td>
-              <td style="padding:8px;color:var(--muted);">${p.division}</td>
-              <td style="padding:8px;text-align:right;">${fmt(p.apr_total)}</td>
-              <td style="padding:8px;text-align:right;font-weight:bold;">${fmt(p.mtd_total)}</td>
-              <td style="padding:8px;text-align:right;font-weight:bold;color:${dColor};">${p.delta>=0?'+':''}${fmt(p.delta)}</td>
+            <tr>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.customer}">${p.customer}</td>
+              <td style="color:var(--muted);font-size:11px;">${p.division}</td>
+              <td class="mono right">${fmt(p.apr_total)}</td>
+              <td class="mono right">${fmt(p.mtd_total)}</td>
+              <td class="mono right" style="color:${dColor};">${p.delta>=0?'+':''}${fmt(p.delta)}</td>
               ${BUCKETS.map(b=>{
                 const d = p.buckets[b.key].delta;
-                if (Math.abs(d) < 0.5) return '<td style="padding:6px;text-align:right;color:#ccc;">–</td>';
-                const c = d < 0 ? '#1f9e5f' : '#d63b3b';
-                return `<td style="padding:6px;text-align:right;color:${c};font-weight:bold;font-size:11px;">${d>=0?'+':''}${fmt(d)}</td>`;
+                if (Math.abs(d) < 0.5) return '<td class="mono right" style="color:var(--dim);">—</td>';
+                const c = d < 0 ? 'var(--success)' : 'var(--danger)';
+                return `<td class="mono right" style="color:${c};">${d>=0?'+':''}${fmt(d)}</td>`;
               }).join('')}
             </tr>
           `;
         }).join('')}
       </tbody>
     </table>
-    ${rows.length===0 ? '<div style="padding:30px;text-align:center;color:var(--muted);">No matching customers</div>' : ''}
+    ${rows.length===0 ? '<div class="empty"><div class="empty-icon">🔍</div>No matching customers</div>' : ''}
     </div>
   `;
   document.getElementById('mtd-customer-table').innerHTML = tableHtml;
@@ -1951,7 +1875,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     state.tab = tab.dataset.tab;
-    ['overview','movement','customers','targets','mtd','inout','offset'].forEach(t => {
+    ['overview','movement','targets','mtd','inout','offset'].forEach(t => {
       document.getElementById(`tab-${t}`).style.display = t === state.tab ? 'block' : 'none';
     });
     render();
@@ -1966,11 +1890,6 @@ document.getElementById('sel-division').addEventListener('change', e => {
 
 document.getElementById('search-movement').addEventListener('input', e => {
   state.searchMovement = e.target.value;
-  render();
-});
-
-document.getElementById('search-cust').addEventListener('input', e => {
-  state.searchCust = e.target.value;
   render();
 });
 
