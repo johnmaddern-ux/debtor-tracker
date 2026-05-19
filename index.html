@@ -521,6 +521,7 @@
             <option value="outstanding">Largest outstanding</option>
             <option value="over61">Largest 61D+</option>
             <option value="pdc">Largest PDC</option>
+            <option value="commitment">Largest commitment</option>
             <option value="alpha">Alphabetical</option>
           </select>
           <select id="cust-age-filter" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:Arial;font-size:13px;">
@@ -548,6 +549,7 @@
               <th class="center">211-360D</th>
               <th class="center">&gt;360D</th>
               <th class="center">Total</th>
+              <th class="center" style="color:#27ae60;">Commitment</th>
             </tr>
           </thead>
           <tbody id="cust-tbody"></tbody>
@@ -1920,6 +1922,8 @@ function renderOffset() {
 
 // =========== CUSTOMER DEBTORS ===========
 (function() {
+  const PA_UAE_COMMITMENTS = {"CUST1748":18375,"CUST0018":33127.5,"CUST0543":4725,"CUST0032":8262.5,"CUST0035":1575,"CUST1457":11295.48,"CUST0902":8855,"CUST0606":20601,"CUST0149":13370,"CUST0176":7577.5,"CUST0825":3000,"CUST1406":6825,"CUST0792":41685.3,"CUST1141":5040,"CUST1397":8400,"CUST0216":1575,"CUST1367":154000,"CUST1382":66088.75,"CUST0237":3097.5,"CUST0582":4200,"CUST0247":15030,"CUST0273":5775,"CUST0282":25620,"CUST0292":62967.5,"CUST1432":8820,"CUST1398":8925,"CUST0311":6405,"CUST1036":7035,"CUST0362":10010,"CUST0842":10080,"CUST1396":8925,"CUST0672":6720,"CUST1702":10500,"CUST0450":2100,"CUST0452":4410,"CUST1081":124880.01};
+
   let custState = { search: '', sort: 'outstanding', ageFilter: 'all' };
 
   function renderCustomers() {
@@ -1944,9 +1948,10 @@ function renderOffset() {
       rows = rows.filter(r => r.customer.toLowerCase().includes(q) || r.cust_code.toLowerCase().includes(q));
     }
 
-    if (custState.sort === 'outstanding') rows.sort((a,b) => b.net_outstanding - a.net_outstanding);
-    else if (custState.sort === 'over61') rows.sort((a,b) => b.over61 - a.over61);
-    else if (custState.sort === 'pdc')    rows.sort((a,b) => (b.pdc||0) - (a.pdc||0));
+    if (custState.sort === 'outstanding')  rows.sort((a,b) => b.net_outstanding - a.net_outstanding);
+    else if (custState.sort === 'over61')  rows.sort((a,b) => b.over61 - a.over61);
+    else if (custState.sort === 'pdc')     rows.sort((a,b) => (b.pdc||0) - (a.pdc||0));
+    else if (custState.sort === 'commitment') rows.sort((a,b) => (PA_UAE_COMMITMENTS[b.cust_code]||0) - (PA_UAE_COMMITMENTS[a.cust_code]||0));
     else rows.sort((a,b) => a.customer.localeCompare(b.customer));
 
     const titleEl = document.getElementById('cust-title');
@@ -1955,7 +1960,7 @@ function renderOffset() {
     const tbody = document.getElementById('cust-tbody');
 
     if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--muted);">No matching customers</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--muted);">No matching customers</td></tr>';
       return;
     }
 
@@ -1976,6 +1981,9 @@ function renderOffset() {
           return `<td class="mono right"${i >= 2 ? ' style="color:#c0392b;"' : ''}>${fmt(v)}</td>`;
         }).join('')}
         <td class="mono right" style="font-weight:600;">${fmt(r.net_outstanding)}</td>
+        ${(PA_UAE_COMMITMENTS[r.cust_code]||0) > 0
+          ? `<td class="mono right" style="color:#27ae60;font-weight:600;">${fmt(PA_UAE_COMMITMENTS[r.cust_code])}</td>`
+          : `<td class="mono right" style="color:var(--dim);">—</td>`}
       </tr>`).join('') +
       `<tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border);">
         <td colspan="2" style="padding:10px 12px;font-size:12px;">TOTAL (${rows.length})</td>
@@ -1987,6 +1995,7 @@ function renderOffset() {
           : `<td class="mono right">${fmt(v)}</td>`
         ).join('')}
         <td class="mono right">${fmt(totalOut)}</td>
+        ${(() => { const tc = rows.reduce((s,r) => s + (PA_UAE_COMMITMENTS[r.cust_code]||0), 0); return tc > 0 ? `<td class="mono right" style="color:#27ae60;">${fmt(tc)}</td>` : `<td class="mono right" style="color:var(--dim);">—</td>`; })()}
       </tr>`;
   }
 
