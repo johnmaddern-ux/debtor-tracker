@@ -318,6 +318,7 @@
       <button class="tab" data-tab="customers">Customer Debtors</button>
       <button class="tab" data-tab="inout">Inflows vs Outflows</button>
       <button class="tab" data-tab="offset">Debtor/ Supplier Offset</button>
+      <button class="tab" data-tab="cashflow">Cash Flow</button>
     </div>
   </div>
 </div>
@@ -555,6 +556,73 @@
           <tbody id="cust-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- CASH FLOW MOVEMENT TAB -->
+  <div id="tab-cashflow" style="display:none;">
+    <div style="display:flex;gap:8px;margin-bottom:20px;align-items:center;">
+      <div class="btn-group" id="cf-view-btns">
+        <button class="active" data-cfview="trajectory">Trajectory</button>
+        <button data-cfview="target">Target Month</button>
+        <button data-cfview="bridge">Bridge Analysis</button>
+      </div>
+      <span style="font-size:11px;color:var(--muted);margin-left:8px;">All figures AED thousands · Ex-Qiddiya operational cash</span>
+    </div>
+
+    <!-- TRAJECTORY VIEW -->
+    <div id="cf-trajectory" class="card full-width" style="margin-bottom:20px;">
+      <div style="margin-bottom:16px;">
+        <div class="card-title" style="margin:0;">PROJECTED CLOSING BALANCE — WEEK-ON-WEEK TRAJECTORY</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">One line per weekly report. Ex-Qiddiya operational cash position. Jan–Jun-only forecasts shown as dashed lines.</div>
+      </div>
+      <div id="cf-trajectory-chart"></div>
+      <div id="cf-trajectory-legend" style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;"></div>
+      <div id="cf-trajectory-summary" style="margin-top:24px;"></div>
+    </div>
+
+    <!-- TARGET MONTH VIEW -->
+    <div id="cf-target" class="card full-width" style="margin-bottom:20px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div class="card-title" style="margin:0;">TARGET MONTH EVOLUTION</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;">How one month's forecast has shifted across weekly reports.</div>
+        </div>
+        <select id="cf-target-month" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:Arial;font-size:13px;">
+          <option value="11">Dec 2026 (Year-End)</option>
+          <option value="10">Nov 2026</option>
+          <option value="9">Oct 2026</option>
+          <option value="8">Sep 2026</option>
+          <option value="7">Aug 2026</option>
+          <option value="6">Jul 2026</option>
+          <option value="5">Jun 2026</option>
+          <option value="4">May 2026</option>
+          <option value="3">Apr 2026</option>
+        </select>
+      </div>
+      <div id="cf-target-chart"></div>
+      <div id="cf-target-notes" style="margin-top:16px;"></div>
+    </div>
+
+    <!-- BRIDGE VIEW -->
+    <div id="cf-bridge" class="card full-width" style="margin-bottom:20px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div class="card-title" style="margin:0;">BRIDGE ANALYSIS — PERIOD-TOTAL FLOWS</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;">How inflows and outflows shifted between two reports. Green = improved cash, red = worsened.</div>
+        </div>
+        <div style="display:flex;gap:16px;align-items:flex-end;">
+          <div class="filter-group">
+            <span class="filter-label">From</span>
+            <select id="cf-bridge-from" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:Arial;font-size:13px;"></select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">To</span>
+            <select id="cf-bridge-to" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:Arial;font-size:13px;"></select>
+          </div>
+        </div>
+      </div>
+      <div id="cf-bridge-chart"></div>
     </div>
   </div>
 
@@ -1246,6 +1314,8 @@ function render() {
     renderOffset();
   } else if (state.tab === 'customers') {
     renderCustomers();
+  } else if (state.tab === 'cashflow') {
+    if (window.renderCF) window.renderCF();
   }
 }
 
@@ -2024,7 +2094,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     state.tab = tab.dataset.tab;
-    ['overview','movement','targets','mtd','inout','offset','customers'].forEach(t => {
+    ['overview','movement','targets','mtd','inout','offset','customers','cashflow'].forEach(t => {
       document.getElementById(`tab-${t}`).style.display = t === state.tab ? 'block' : 'none';
     });
     render();
@@ -2056,6 +2126,318 @@ document.addEventListener('input', e => {
   if (e.target.id === 'search-targets') renderCollectionTargets();
 });
 
+
+// =========== CASH FLOW MOVEMENT ===========
+(function(){
+  const CF_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Closing balance ex-Qiddiya, AED thousands. null = month not modelled in that report.
+  const CF_CLOSING = [
+    { date:'2026-02-28', label:'28 Feb', partial:true,  balances:[78268,62454,45139,33284,38575,41597,null,null,null,null,null,null] },
+    { date:'2026-03-10', label:'10 Mar', partial:true,  balances:[78268,62465,38870,35418,31993,36453,null,null,null,null,null,null] },
+    { date:'2026-03-24', label:'24 Mar', partial:true,  balances:[78268,62465,52498,38057,31100,28323,null,null,null,null,null,null] },
+    { date:'2026-03-31', label:'31 Mar', partial:false, balances:[78268,62465,63465,48692,36297,34375,32847,32067,25892,28794,23405,15987] },
+    { date:'2026-04-14', label:'14 Apr', partial:false, balances:[78268,62465,63465,43834,31895,34088,39794,43640,42247,45768,39833,31448] },
+    { date:'2026-04-21', label:'21 Apr', partial:false, balances:[78268,62465,63465,53201,40217,38266,41779,43131,39580,42680,36267,27874] },
+    { date:'2026-05-05', label:'05 May', partial:false, balances:[78268,62465,63465,66640,56278,54847,53498,47676,48589,41720,34088,26457] },
+  ];
+
+  // Period-total flows ex-Qiddiya. Column order matches CF_CLOSING (28Feb … 05May).
+  const CF_FLOW_LABELS = ['28 Feb','10 Mar','24 Mar','31 Mar','14 Apr','21 Apr','05 May'];
+  const CF_FLOWS = [
+    { category:'Collections',     type:'inflow',    values:[144192,144606,132199,192323,231414,231886,238506] },
+    { category:'Other inflows',   type:'inflow',    values:[ 17912, 13131, 13183, 23890, 23868, 23930, 25201] },
+    { category:'Qiddiya adj.',    type:'inflow',    values:[ -4050, -4088, -4479, -4487, -4661, -4686, -4809] },
+    { category:'TOTAL INFLOWS',   type:'total_in',  values:[158054,158054,140903,211726,250621,251130,258899] },
+    { category:'Suppliers',       type:'outflow',   values:[ 57121, 58629, 58696, 72844, 75702, 74235, 77560] },
+    { category:'Project Expenses',type:'outflow',   values:[ 15372, 15442, 14532, 18994, 38935, 39353, 39364] },
+    { category:'Salaries',        type:'outflow',   values:[ 32572, 33004, 32688, 54262, 53665, 57961, 56626] },
+    { category:'Manpower',        type:'outflow',   values:[ 11109,  9606,  6641, 15247, 15840, 16224, 14821] },
+    { category:'Rent',            type:'outflow',   values:[  6942,  6947,  6924, 12266, 12410, 12455, 12491] },
+    { category:'Term Loan',       type:'outflow',   values:[  3915,  4014,  3917,  7744,  7748,  7747,  7752] },
+    { category:'Visa',            type:'outflow',   values:[  1122,  1085,   886,  1655,  1671,  1681,  1708] },
+    { category:'Guarantees',      type:'outflow',   values:[  4990,  4990,  5262,  5262,  5263,  5263,  5263] },
+    { category:'Taxes',           type:'outflow',   values:[  8563, 10371, 11016, 14733, 14568, 14568, 14822] },
+    { category:'Insurance',       type:'outflow',   values:[  3087,  2949,  3042,  5661,  5648,  5648,  5630] },
+    { category:'Credit Cards',    type:'outflow',   values:[  1541,  1526,  1355,  3204,  3204,  3226,  3209] },
+    { category:'Other Fixed',     type:'outflow',   values:[  5430,  5573,  5045,  9553, 10019, 10029, 10580] },
+    { category:'Dividend',        type:'outflow',   values:[ 25088, 25090, 25090, 25703, 25705, 25705, 25705] },
+    { category:'Other Variable',  type:'outflow',   values:[  6129,  5694,  5786, 11814, 12001, 12312, 12428] },
+    { category:'Capex',           type:'outflow',   values:[  4694,  4700,  4122,  9222,  9219,  9274,  9274] },
+    { category:'TOTAL OUTFLOWS',  type:'total_out', values:[187673,188869,185003,268163,291597,295680,297235] },
+  ];
+
+  const CF_NOTES = [
+    { date:'2026-02-28', tag:'Pre-revision',         note:'Annual revenue revised UP to AED 290.9M from AED 250M. Strong Jan + Feb collections beat target. Regional conflict scenario raised. Ex-Q horizon Jan–Jun only.' },
+    { date:'2026-03-10', tag:'Minor adjustments',    note:'Key Person loan rescheduled to October. Prommac/Gazi-Nefty deferred. Qiddiya Phase 1 partial inflow received (AED 5.7M). Ex-Q horizon Jan–Jun only.' },
+    { date:'2026-03-24', tag:'Conservative revision', note:'Conservative revenue forecast adopted — 38% reduction (290.9M → 180.2M). Driven by regional uncertainty. Cost reductions NOT yet reflected. Ex-Q horizon Jan–Jun only.' },
+    { date:'2026-03-31', tag:'First full-year ex-Q', note:'First report with full-year ex-Q forecast. 37% revenue reduction reflected. Salaries -25%, fuel -25%, visa capped AED 20K/mo, bonus AED 3.5M under review, capex AED 4M flagged.' },
+    { date:'2026-04-14', tag:'Airport project + cost cuts', note:'ALEC Airport Project added: ~AED 38.2M inflows, ~AED 19.5M costs. Cost reductions retained.' },
+    { date:'2026-04-21', tag:'Pre-April actuals',    note:'April collections 20.3M vs target 22.5M (90%). Bonus rephased: 25% July, 50% December. ENBD considering 3-month loan deferral. Salaries -15% applied (vs -25% planned).' },
+    { date:'2026-05-05', tag:'April beat + ENBD holiday', note:'April collections beat: 26.8M vs 22.5M target (119%). April outflows 14.4M below forecast. 10% salary deferral April, 15% from May. ENBD granted capital repayment holiday May–Oct; AED 4M repayments fall Nov/Dec.' },
+  ];
+
+  // Colour ramp: lightest = oldest, darkest = newest
+  const LINE_COLORS = ['#a8c8e0','#7eb4d4','#54a0c8','#2a8cbc','#0071B7','#00579a','#183057'];
+
+  const fmK = v => v == null ? '–' : (Math.abs(v) >= 1000 ? (v/1000).toFixed(1)+'M' : v.toLocaleString()+'K');
+  const fmtSgn = v => (v > 0 ? '+' : '') + Math.round(v).toLocaleString();
+
+  let cfView = 'trajectory';
+  let cfTargetMonth = 11;
+  let cfBridgeFrom  = 0;
+  let cfBridgeTo    = 6;
+
+  // Sub-view switcher
+  document.querySelectorAll('#cf-view-btns button').forEach(b => {
+    b.addEventListener('click', () => {
+      cfView = b.dataset.cfview;
+      document.querySelectorAll('#cf-view-btns button').forEach(x => x.classList.toggle('active', x === b));
+      ['trajectory','target','bridge'].forEach(v => {
+        document.getElementById('cf-' + v).style.display = v === cfView ? 'block' : 'none';
+      });
+      renderCF();
+    });
+  });
+
+  document.getElementById('cf-target-month').addEventListener('change', e => {
+    cfTargetMonth = +e.target.value;
+    renderCFTarget();
+  });
+
+  // Populate bridge selects
+  const bFrom = document.getElementById('cf-bridge-from');
+  const bTo   = document.getElementById('cf-bridge-to');
+  CF_FLOW_LABELS.forEach((l, i) => {
+    bFrom.innerHTML += `<option value="${i}">${l}</option>`;
+    bTo.innerHTML   += `<option value="${i}"${i===6?' selected':''}>${l}</option>`;
+  });
+  bFrom.addEventListener('change', e => { cfBridgeFrom = +e.target.value; renderCFBridge(); });
+  bTo.addEventListener('change',   e => { cfBridgeTo   = +e.target.value; renderCFBridge(); });
+
+  // ---- Trajectory ----
+  function renderCFTrajectory() {
+    const W=680, H=210, PL=58, PR=60, PT=14, PB=28;
+    const innerW = W-PL-PR, innerH = H-PT-PB;
+    const maxVal = 82000, minVal = 0;
+    const xScale = i => PL + i * (innerW / 11);
+    const yScale = v => PT + innerH * (1 - (v - minVal) / (maxVal - minVal));
+
+    // Y gridlines
+    const yTicks = [0,20,40,60,80].map(k => {
+      const y = yScale(k*1000);
+      return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#e4ecf4" stroke-width="1"/>
+              <text x="${PL-5}" y="${y+4}" text-anchor="end" fill="#8090a4" font-size="9" font-family="Arial">${k}M</text>`;
+    }).join('');
+
+    // X labels
+    const xLabels = CF_MONTHS.map((m,i) =>
+      `<text x="${xScale(i)}" y="${H-4}" text-anchor="middle" fill="#5a6f8a" font-size="10" font-family="Arial">${m}</text>`
+    ).join('');
+
+    // Lines
+    const lines = CF_CLOSING.map((r, ri) => {
+      const color = LINE_COLORS[ri];
+      const pts = r.balances.map((v,i) => v != null ? `${xScale(i)},${yScale(v)}` : null).filter(Boolean);
+      if (!pts.length) return '';
+      const circles = r.balances.map((v,i) => v == null ? '' :
+        `<circle cx="${xScale(i)}" cy="${yScale(v)}" r="2.5" fill="${color}" stroke="#fff" stroke-width="1"/>`
+      ).join('');
+      const dash = r.partial ? 'stroke-dasharray="5 3"' : '';
+      const sw = r.partial ? '1.5' : '2.2';
+      return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${sw}" ${dash} stroke-linejoin="round"/>${circles}`;
+    }).join('');
+
+    // Dec 2026 annotations on right side
+    const annotations = CF_CLOSING.filter(r => !r.partial && r.balances[11] != null).map(r => {
+      const ri = CF_CLOSING.indexOf(r);
+      return `<text x="${xScale(11)+8}" y="${yScale(r.balances[11])+4}" fill="${LINE_COLORS[ri]}" font-size="9" font-family="Arial" font-weight="bold">${fmK(r.balances[11])}</text>`;
+    }).join('');
+
+    document.getElementById('cf-trajectory-chart').innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" class="trend-svg" style="max-height:250px;">
+        ${yTicks}
+        <line x1="${PL}" y1="${PT}" x2="${PL}" y2="${H-PB}" stroke="#d0daea" stroke-width="1"/>
+        ${xLabels}${lines}${annotations}
+      </svg>`;
+
+    // Legend
+    document.getElementById('cf-trajectory-legend').innerHTML = CF_CLOSING.map((r, ri) => {
+      const color = LINE_COLORS[ri];
+      const dec = r.balances[11];
+      const dash = r.partial ? 'stroke-dasharray:5 3' : '';
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+        <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="${color}" stroke-width="${r.partial?1.5:2.2}" style="${dash}"/></svg>
+        <span style="color:${color};font-weight:${r.partial?'500':'700'}">${r.label}</span>
+        <span style="color:var(--muted);font-size:11px;">${dec != null ? fmK(dec) : 'H2 n/a'}</span>
+      </div>`;
+    }).join('');
+
+    // Dec 2026 summary table
+    const fullYr = CF_CLOSING.filter(r => !r.partial && r.balances[11] != null);
+    const rows = fullYr.map((r, i) => {
+      const dec = r.balances[11];
+      const prev = i > 0 ? fullYr[i-1].balances[11] : null;
+      const delta = prev != null ? dec - prev : null;
+      const color = LINE_COLORS[CF_CLOSING.indexOf(r)];
+      const noteEntry = CF_NOTES.find(n => n.date === r.date);
+      const deltaHtml = delta != null
+        ? `<span style="color:${delta<0?'var(--danger)':'var(--success)'}">${fmtSgn(delta)}K</span>`
+        : '<span style="color:var(--dim)">—</span>';
+      return `<tr>
+        <td style="padding:5px 14px 5px 0;font-weight:700;color:${color};">${r.label}</td>
+        <td style="padding:5px 14px;text-align:right;font-weight:600;">${fmK(dec)}</td>
+        <td style="padding:5px 14px;text-align:right;">${deltaHtml}</td>
+        <td style="padding:5px 14px;font-size:11px;color:var(--muted);">${noteEntry?.tag || ''}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('cf-trajectory-summary').innerHTML = `
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:8px;">Dec 2026 Year-End Trajectory (Ex-Qiddiya)</div>
+      <table style="border-collapse:collapse;font-size:13px;">
+        <thead><tr>
+          <th style="padding:4px 14px 4px 0;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Report</th>
+          <th style="padding:4px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Dec 2026</th>
+          <th style="padding:4px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">vs Prior</th>
+          <th style="padding:4px 14px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Key Driver</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ---- Target Month ----
+  function renderCFTarget() {
+    const mi = cfTargetMonth;
+    const monthName = CF_MONTHS[mi] + ' 2026';
+    const reports = CF_CLOSING.filter(r => r.balances[mi] != null);
+
+    if (!reports.length) {
+      document.getElementById('cf-target-chart').innerHTML =
+        `<p style="color:var(--muted);padding:20px 0;">No forecast data for ${monthName} yet.</p>`;
+      document.getElementById('cf-target-notes').innerHTML = '';
+      return;
+    }
+
+    const W=500, H=165, PL=48, PR=20, PT=14, PB=32;
+    const innerW=W-PL-PR, innerH=H-PT-PB;
+    const maxVal = Math.max(...reports.map(r => r.balances[mi])) * 1.08;
+    const yScale = v => PT + innerH * (1 - v / maxVal);
+    const barW = Math.min(40, (innerW / reports.length) * 0.55);
+    const xPos = i => PL + (innerW / reports.length) * (i + 0.5);
+
+    const yTicks = [0,20,40,60,80].filter(k => k*1000 <= maxVal).map(k => {
+      const y = yScale(k*1000);
+      return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#e4ecf4" stroke-width="1"/>
+              <text x="${PL-4}" y="${y+4}" text-anchor="end" fill="#8090a4" font-size="9" font-family="Arial">${k}M</text>`;
+    }).join('');
+
+    const bars = reports.map((r, i) => {
+      const ri = CF_CLOSING.indexOf(r);
+      const color = LINE_COLORS[ri];
+      const v = r.balances[mi];
+      const bh = innerH * (v / maxVal);
+      const x = xPos(i) - barW/2;
+      const y = yScale(v);
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" fill="${color}" rx="2"/>
+              <text x="${xPos(i)}" y="${y-5}" text-anchor="middle" fill="${color}" font-size="9" font-family="Arial" font-weight="bold">${fmK(v)}</text>
+              <text x="${xPos(i)}" y="${H-4}" text-anchor="middle" fill="#5a6f8a" font-size="9" font-family="Arial">${r.label}</text>`;
+    }).join('');
+
+    document.getElementById('cf-target-chart').innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" class="trend-svg" style="max-height:185px;">
+        ${yTicks}
+        <line x1="${PL}" y1="${PT}" x2="${PL}" y2="${H-PB}" stroke="#d0daea" stroke-width="1"/>
+        ${bars}
+      </svg>`;
+
+    document.getElementById('cf-target-notes').innerHTML = reports.map((r, i) => {
+      const ri = CF_CLOSING.indexOf(r);
+      const color = LINE_COLORS[ri];
+      const noteEntry = CF_NOTES.find(n => n.date === r.date);
+      if (!noteEntry) return '';
+      const v = r.balances[mi];
+      const prev = i > 0 ? reports[i-1].balances[mi] : null;
+      const delta = prev != null ? v - prev : null;
+      const deltaHtml = delta != null
+        ? ` &nbsp;<span style="color:${delta<0?'var(--danger)':'var(--success)'};font-size:12px;">${fmtSgn(delta)}K</span>`
+        : '';
+      return `<div style="display:flex;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="min-width:52px;font-weight:700;color:${color};font-size:12px;padding-top:2px;">${r.label}</div>
+        <div>
+          <span style="display:inline-block;padding:1px 8px;border-radius:3px;background:${color}22;color:${color};font-size:11px;font-weight:700;margin-right:6px;">${noteEntry.tag}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--text);">${fmK(v)}</span>${deltaHtml}
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;">${noteEntry.note}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ---- Bridge ----
+  function renderCFBridge() {
+    const fi = cfBridgeFrom, ti = cfBridgeTo;
+    if (fi === ti) {
+      document.getElementById('cf-bridge-chart').innerHTML =
+        '<p style="color:var(--muted);padding:16px 0;">Select two different reports to compare.</p>';
+      return;
+    }
+
+    const cats = CF_FLOWS.filter(f => f.type === 'inflow' || f.type === 'outflow');
+    const deltas = cats.map(f => {
+      const delta = f.values[ti] - f.values[fi];
+      const cashImpact = f.type === 'inflow' ? delta : -delta;
+      return { category: f.category, type: f.type, delta, cashImpact, isGood: cashImpact > 0 };
+    }).sort((a,b) => Math.abs(b.cashImpact) - Math.abs(a.cashImpact));
+
+    const n = deltas.length;
+    const barH = 22, gap = 5;
+    const W = 620, PL = 116, PR = 80, PT = 22, PB = 12;
+    const H = n * (barH + gap) + PT + PB;
+    const innerW = W - PL - PR;
+    const maxImp = Math.max(...deltas.map(d => Math.abs(d.cashImpact)));
+    const scaleX = v => (Math.abs(v) / maxImp) * (innerW / 2);
+    const midX = PL + innerW / 2;
+
+    let svgParts = [
+      `<line x1="${midX}" y1="${PT-8}" x2="${midX}" y2="${H-PB}" stroke="#d0daea" stroke-width="1" stroke-dasharray="3 2"/>`,
+      `<text x="${midX}" y="${PT-10}" text-anchor="middle" fill="#8090a4" font-size="9" font-family="Arial">0</text>`,
+    ];
+
+    deltas.forEach((d, i) => {
+      const y = PT + i * (barH + gap);
+      const bw = Math.max(2, scaleX(d.cashImpact));
+      const color = d.isGood ? '#1a9e6b' : '#c0392b';
+      const x = d.cashImpact >= 0 ? midX : midX - bw;
+      svgParts.push(`<rect x="${x}" y="${y}" width="${bw}" height="${barH}" fill="${color}" rx="2" opacity="0.85"/>`);
+      svgParts.push(`<text x="${PL-6}" y="${y+barH/2+4}" text-anchor="end" fill="var(--text)" font-size="10" font-family="Arial">${d.category}</text>`);
+      const lx = d.cashImpact >= 0 ? midX + bw + 4 : midX - bw - 4;
+      const la = d.cashImpact >= 0 ? 'start' : 'end';
+      svgParts.push(`<text x="${lx}" y="${y+barH/2+4}" text-anchor="${la}" fill="${color}" font-size="10" font-family="Arial" font-weight="bold">${fmtSgn(d.delta)}K</text>`);
+    });
+
+    const totalIn  = CF_FLOWS.find(f => f.type === 'total_in');
+    const totalOut = CF_FLOWS.find(f => f.type === 'total_out');
+    const netDelta = ((totalIn.values[ti] - totalOut.values[ti]) - (totalIn.values[fi] - totalOut.values[fi]));
+    const inDelta  = totalIn.values[ti]  - totalIn.values[fi];
+    const outDelta = totalOut.values[ti] - totalOut.values[fi];
+
+    document.getElementById('cf-bridge-chart').innerHTML = `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+        <strong style="color:var(--text);">${CF_FLOW_LABELS[fi]}</strong> → <strong style="color:var(--text);">${CF_FLOW_LABELS[ti]}</strong> &nbsp;·&nbsp;
+        Net position: <strong style="color:${netDelta>=0?'var(--success)':'var(--danger)'};">${netDelta>=0?'+':''}${Math.round(netDelta).toLocaleString()}K</strong>
+        &nbsp;(inflows <span style="color:${inDelta>=0?'var(--success)':'var(--danger)'};">${fmtSgn(Math.round(inDelta))}K</span>,
+        outflows <span style="color:${outDelta<=0?'var(--success)':'var(--danger)'};">${fmtSgn(Math.round(outDelta))}K</span>)
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" class="trend-svg" style="max-height:${H}px;">${svgParts.join('')}</svg>`;
+  }
+
+  function renderCF() {
+    if (cfView === 'trajectory') renderCFTrajectory();
+    else if (cfView === 'target') renderCFTarget();
+    else if (cfView === 'bridge') renderCFBridge();
+  }
+
+  // Trigger on tab switch
+  window.renderCF = renderCF;
+})();
 
 // =========== INIT ===========
 document.getElementById('header-date').textContent = new Date().toLocaleDateString('en-AE', { weekday:'short', year:'numeric', month:'long', day:'numeric' });
