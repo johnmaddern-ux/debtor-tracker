@@ -2140,31 +2140,33 @@ document.addEventListener('input', e => {
     { date:'2026-04-14', label:'14 Apr', partial:false, balances:[78268,62465,63465,43834,31895,34088,39794,43640,42247,45768,39833,31448] },
     { date:'2026-04-21', label:'21 Apr', partial:false, balances:[78268,62465,63465,53201,40217,38266,41779,43131,39580,42680,36267,27874] },
     { date:'2026-05-05', label:'05 May', partial:false, balances:[78268,62465,63465,66640,56278,54847,53498,47676,48589,41720,34088,26457] },
+    { date:'2026-05-12', label:'12 May', partial:false, balances:[78268,62465,63465,66640,65012,54243,51986,49069,42748,43813,36434,25857] },
+    { date:'2026-05-19', label:'19 May', partial:false, balances:[78268,62465,63465,66640,73132,51832,50600,48205,42648,44830,38622,29534] },
   ];
 
   // Period-total flows ex-Qiddiya. Column order matches CF_CLOSING (28Feb … 05May).
-  const CF_FLOW_LABELS = ['28 Feb','10 Mar','24 Mar','31 Mar','14 Apr','21 Apr','05 May'];
+  const CF_FLOW_LABELS = ['28 Feb','10 Mar','24 Mar','31 Mar','14 Apr','21 Apr','05 May','12 May','19 May'];
   const CF_FLOWS = [
-    { category:'Collections',     type:'inflow',    values:[144192,144606,132199,192323,231414,231886,238506] },
-    { category:'Other inflows',   type:'inflow',    values:[ 17912, 13131, 13183, 23890, 23868, 23930, 25201] },
-    { category:'Qiddiya adj.',    type:'inflow',    values:[ -4050, -4088, -4479, -4487, -4661, -4686, -4809] },
-    { category:'TOTAL INFLOWS',   type:'total_in',  values:[158054,158054,140903,211726,250621,251130,258899] },
-    { category:'Suppliers',       type:'outflow',   values:[ 57121, 58629, 58696, 72844, 75702, 74235, 77560] },
-    { category:'Project Expenses',type:'outflow',   values:[ 15372, 15442, 14532, 18994, 38935, 39353, 39364] },
-    { category:'Salaries',        type:'outflow',   values:[ 32572, 33004, 32688, 54262, 53665, 57961, 56626] },
-    { category:'Manpower',        type:'outflow',   values:[ 11109,  9606,  6641, 15247, 15840, 16224, 14821] },
-    { category:'Rent',            type:'outflow',   values:[  6942,  6947,  6924, 12266, 12410, 12455, 12491] },
-    { category:'Term Loan',       type:'outflow',   values:[  3915,  4014,  3917,  7744,  7748,  7747,  7752] },
-    { category:'Visa',            type:'outflow',   values:[  1122,  1085,   886,  1655,  1671,  1681,  1708] },
-    { category:'Guarantees',      type:'outflow',   values:[  4990,  4990,  5262,  5262,  5263,  5263,  5263] },
-    { category:'Taxes',           type:'outflow',   values:[  8563, 10371, 11016, 14733, 14568, 14568, 14822] },
-    { category:'Insurance',       type:'outflow',   values:[  3087,  2949,  3042,  5661,  5648,  5648,  5630] },
-    { category:'Credit Cards',    type:'outflow',   values:[  1541,  1526,  1355,  3204,  3204,  3226,  3209] },
-    { category:'Other Fixed',     type:'outflow',   values:[  5430,  5573,  5045,  9553, 10019, 10029, 10580] },
-    { category:'Dividend',        type:'outflow',   values:[ 25088, 25090, 25090, 25703, 25705, 25705, 25705] },
-    { category:'Other Variable',  type:'outflow',   values:[  6129,  5694,  5786, 11814, 12001, 12312, 12428] },
-    { category:'Capex',           type:'outflow',   values:[  4694,  4700,  4122,  9222,  9219,  9274,  9274] },
-    { category:'TOTAL OUTFLOWS',  type:'total_out', values:[187673,188869,185003,268163,291597,295680,297235] },
+    { category:'Collections',     type:'inflow',    values:[144192,144606,132199,192323,231414,231886,238506,240377,244547] },
+    { category:'Other inflows',   type:'inflow',    values:[ 17912, 13131, 13183, 23890, 23868, 23930, 25201, 21236, 24133] },
+    { category:'Qiddiya adj.',    type:'inflow',    values:[ -4050, -4088, -4479, -4487, -4661, -4686, -4809, -4925, -4927] },
+    { category:'TOTAL INFLOWS',   type:'total_in',  values:[158054,158054,140903,211726,250621,251130,258899,256688,263753] },
+    { category:'Suppliers',       type:'outflow',   values:[ 57121, 58629, 58696, 72844, 75702, 74235, 77560, 78724, 80460] },
+    { category:'Project Expenses',type:'outflow',   values:[ 15372, 15442, 14532, 18994, 38935, 39353, 39364, 39377, 40718] },
+    { category:'Salaries',        type:'outflow',   values:[ 32572, 33004, 32688, 54262, 53665, 57961, 56626, 60463, 60462] },
+    { category:'Manpower',        type:'outflow',   values:[ 11109,  9606,  6641, 15247, 15840, 16224, 14821, 15642, 15680] },
+    { category:'Rent',            type:'outflow',   values:[  6942,  6947,  6924, 12266, 12410, 12455, 12491, 12486, 12542] },
+    { category:'Term Loan',       type:'outflow',   values:[  3915,  4014,  3917,  7744,  7748,  7747,  7752,  7777,  7777] },
+    { category:'Visa',            type:'outflow',   values:[  1122,  1085,   886,  1655,  1671,  1681,  1708,  1704,  1726] },
+    { category:'Guarantees',      type:'outflow',   values:[  4990,  4990,  5262,  5262,  5263,  5263,  5263,  5263,  5263] },
+    { category:'Taxes',           type:'outflow',   values:[  8563, 10371, 11016, 14733, 14568, 14568, 14822, 14823, 15050] },
+    { category:'Insurance',       type:'outflow',   values:[  3087,  2949,  3042,  5661,  5648,  5648,  5630,  5652,  5640] },
+    { category:'Credit Cards',    type:'outflow',   values:[  1541,  1526,  1355,  3204,  3204,  3226,  3209,  3297,  3297] },
+    { category:'Other Fixed',     type:'outflow',   values:[  5430,  5573,  5045,  9553, 10019, 10029, 10580, 10614, 10475] },
+    { category:'Dividend',        type:'outflow',   values:[ 25088, 25090, 25090, 25703, 25705, 25705, 25705, 25705, 25713] },
+    { category:'Other Variable',  type:'outflow',   values:[  6129,  5694,  5786, 11814, 12001, 12312, 12428, 12452, 12566] },
+    { category:'Capex',           type:'outflow',   values:[  4694,  4700,  4122,  9222,  9219,  9274,  9274,  9274,  9274] },
+    { category:'TOTAL OUTFLOWS',  type:'total_out', values:[187673,188869,185003,268163,291597,295680,297235,303254,306642] },
   ];
 
   const CF_NOTES = [
@@ -2175,10 +2177,12 @@ document.addEventListener('input', e => {
     { date:'2026-04-14', tag:'Airport project + cost cuts', note:'ALEC Airport Project added: ~AED 38.2M inflows, ~AED 19.5M costs. Cost reductions retained.' },
     { date:'2026-04-21', tag:'Pre-April actuals',    note:'April collections 20.3M vs target 22.5M (90%). Bonus rephased: 25% July, 50% December. ENBD considering 3-month loan deferral. Salaries -15% applied (vs -25% planned).' },
     { date:'2026-05-05', tag:'April beat + ENBD holiday', note:'April collections beat: 26.8M vs 22.5M target (119%). April outflows 14.4M below forecast. 10% salary deferral April, 15% from May. ENBD granted capital repayment holiday May–Oct; AED 4M repayments fall Nov/Dec.' },
+    { date:'2026-05-12', tag:'May MTD 25% (12 days)',    note:'Collections AED 9.6M vs target 38.2M (25%), first 12 days only; Eid holidays expected to reduce KSA/Oman window. Gazi & Nefti KSA payment (AED 3.97M) received and adjusted. Banca MPS deferment under discussion; ENBD holiday confirmed May–Oct. Rent to Dubai Industrial City deferred to end of August.' },
+    { date:'2026-05-19', tag:'May MTD 33% + Eid impact', note:'Collections AED 12.8M vs target 38.2M (33%), first 19 days; Eid holidays (KSA/Oman) reduce remaining collection window materially. Gazi & Nefti KSA payment adjusted; Prommac UAE AED 759K still pending; write-off ~AED 1.27M. EOSB provision AED 1.6M for remainder of year. Banca MPS awaiting internal position; update expected June. Dec balance improvement vs 12 May reflects collection phasing and outflow timing adjustments.' },
   ];
 
   // Colour ramp: lightest = oldest, darkest = newest
-  const LINE_COLORS = ['#a8c8e0','#7eb4d4','#54a0c8','#2a8cbc','#0071B7','#00579a','#183057'];
+  const LINE_COLORS = ['#c8e0f0','#a8ccdf','#88b8ce','#68a4bd','#4890ac','#2a7cbb','#0071B7','#00579a','#183057'];
 
   const fmK = v => v == null ? '–' : (Math.abs(v) >= 1000 ? (v/1000).toFixed(1)+'M' : v.toLocaleString()+'K');
   const fmtSgn = v => (v > 0 ? '+' : '') + Math.round(v).toLocaleString();
