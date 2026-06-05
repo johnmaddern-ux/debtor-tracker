@@ -2145,10 +2145,11 @@ document.addEventListener('input', e => {
     { date:'2026-05-05', label:'05 May', partial:false, balances:[78268,62465,63465,66640,56278,54847,53498,47676,48589,41720,34088,26457] },
     { date:'2026-05-12', label:'12 May', partial:false, balances:[78268,62465,63465,66640,65012,54243,51986,49069,42748,43813,36434,25857] },
     { date:'2026-05-19', label:'19 May', partial:false, balances:[78268,62465,63465,66640,73132,51832,50600,48205,42648,44830,38622,29534] },
+    { date:'2026-06-05', label:'05 Jun', partial:false, balances:[78268,62465,63465,66640,67359,56278,54847,53498,47676,48589,41720,34088] },
   ];
 
   // Period-total flows ex-Qiddiya. Column order matches CF_CLOSING (28Feb … 05May).
-  const CF_FLOW_LABELS = ['28 Feb','10 Mar','24 Mar','31 Mar','14 Apr','21 Apr','05 May','12 May','19 May'];
+  const CF_FLOW_LABELS = ['28 Feb','10 Mar','24 Mar','31 Mar','14 Apr','21 Apr','05 May','12 May','19 May','05 Jun'];
   const CF_FLOWS = [
     { category:'Collections',     type:'inflow',    values:[144192,144606,132199,192323,231414,231886,238506,240377,244547] },
     { category:'Other inflows',   type:'inflow',    values:[ 17912, 13131, 13183, 23890, 23868, 23930, 25201, 21236, 24133] },
@@ -2182,6 +2183,7 @@ document.addEventListener('input', e => {
     { date:'2026-05-05', tag:'April beat + ENBD holiday', note:'April collections beat: 26.8M vs 22.5M target (119%). April outflows 14.4M below forecast. 10% salary deferral April, 15% from May. ENBD granted capital repayment holiday May–Oct; AED 4M repayments fall Nov/Dec.' },
     { date:'2026-05-12', tag:'May MTD 25% (12 days)',    note:'Collections AED 9.6M vs target 38.2M (25%), first 12 days only; Eid holidays expected to reduce KSA/Oman window. Gazi & Nefti KSA payment (AED 3.97M) received and adjusted. Banca MPS deferment under discussion; ENBD holiday confirmed May–Oct. Rent to Dubai Industrial City deferred to end of August.' },
     { date:'2026-05-19', tag:'May MTD 33% + Eid impact', note:'Collections AED 12.8M vs target 38.2M (33%), first 19 days; Eid holidays (KSA/Oman) reduce remaining collection window materially. Gazi & Nefti KSA payment adjusted; Prommac UAE AED 759K still pending; write-off ~AED 1.27M. EOSB provision AED 1.6M for remainder of year. Banca MPS awaiting internal position; update expected June. Dec balance improvement vs 12 May reflects collection phasing and outflow timing adjustments.' },
+    { date:'2026-06-05', tag:'June opening position', note:'May closing actual: AED 67.4M (vs 73.1M forecast 19 May — AED 5.7M below forecast). Jun–Dec forecast updated: Dec year-end AED 34.1M (vs 29.5M at 19 May, +AED 4.6M improvement). Jun forecast AED 56.3M.' },
   ];
 
   // Colour ramp: lightest = oldest, darkest = newest
